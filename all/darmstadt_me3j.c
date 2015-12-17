@@ -1,4 +1,3 @@
-#include <assert.h>
 #include <limits.h>
 #include <math.h>
 #include <stdio.h>
@@ -48,13 +47,11 @@ void range_twoJ_both(int twoj1, int twoj2, int twojj1, int twojj2,
     intersect_range(twoJMin, twoJMax, &twoJJMin, &twoJJMax);
 }
 
-/** Find the common range of J formed by coupling j1 with j2 and coupling jj1
-    with jj2, where j1 and j2 must be either both half-integers or both
-    integers, and similarly for jj1 and jj2. */
-void range_J_both(int twoj1, int twoj2, int twojj1, int twojj2,
-                  int *JMin, int *JMax)
+/** Find the range of J formed by coupling j1 with j2, where j1 and j2 must be
+    either both half-integers or both integers. */
+void range_J(int twoj1, int twoj2, int *JMin, int *JMax)
 {
-    range_twoJ_both(twoj1, twoj2, twojj1, twojj2, JMin, JMax);
+    range_twoJ(twoj1, twoj2, JMin, JMax);
     *JMin /= 2;
     *JMax /= 2;
 }
@@ -146,186 +143,74 @@ void free_nlj_table(struct nlj_table *self)
     free(self->e_nlj);
 }
 
-int shell_number(int n, int l)
-{
-    return 2 * n + l;
-}
-
-int pack_nlj(int e, int twoj)
-{
-    return (e * (e + 1) + twoj) / 2;
-}
-
-int unpack_nlj(int nlj, int *n, int *l, int *twoj)
-{
-    const int e = ((int)sqrt(8 * nlj + 1) - 1) / 2;
-    const int erem = nlj - e * (e + 1) / 2;
-    *twoj = 1 + erem * 2;
-    *n = (e - erem) / 2;
-    *l = e - 2 * *n;
-    return e;
-}
-
-int violates_parity_2(int nlj1, int nlj2, int nnlj1, int nnlj2,
+int violates_parity_3(int nlj1, int nlj2, int nlj3,
+                      int nnlj1, int nnlj2, int nnlj3,
                       const int *l_nlj)
 {
-    return (l_nlj[nlj1] + l_nlj[nlj2] - l_nlj[nnlj1] - l_nlj[nnlj2]) % 2;
+    return (l_nlj[nlj1] + l_nlj[nlj2] + l_nlj[nlj3] -
+            l_nlj[nnlj1] - l_nlj[nnlj2] - l_nlj[nnlj3]) % 2;
 }
 
-/** Iterate over all 2-body matrix elements in the Darmstadt ME2J order.  The
+/** Iterate over all 3-body matrix elements in the Darmstadt ME3J order.  The
     function `f` is called each iteration with an arbitary argument `env`. */
-void iterate_me2j(int nljDim, int EMax,
+void iterate_me3j(int nljDim, int EMax,
                   const int *e_nlj, const int *l_nlj, const int *twoj_nlj,
-                  void (*f)(void *env, int nlj1, int nlj2, int nnlj1, int nnlj2,
-                            int J, int T, int MT),
+                  void (*f)(void *env,
+                            int nlj1, int nlj2, int nlj3,
+                            int nnlj1, int nnlj2, int nnlj3,
+                            int J12, int JJ12, int J,
+                            int T12, int TT12, int T),
                   void *env)
 {
-    int nlj1, nlj2, nnlj1, nnlj2, J, JMin, JMax, T, MT;
+    int nlj1, nlj2, nlj3, nnlj1, nnlj2, nnlj3,
+        J12, JJ12, J12Min, J12Max, JJ12Min, JJ12Max,
+        twoJ, twoJMin, twoJMax, T12, TT12, twoT;
     for (nlj1 = 0; nlj1 < nljDim; nlj1++)
-    for (nlj2 = 0; nlj2 <= nlj1; nlj2++) {
-        if (e_nlj[nlj1] + e_nlj[nlj2] > EMax)
+    for (nlj2 = 0; nlj2 <= nlj1; nlj2++)
+    for (nlj3 = 0; nlj3 <= nlj2; nlj3++) {
+        if (e_nlj[nlj1] + e_nlj[nlj2] + e_nlj[nlj3] > EMax)
             break;
         for (nnlj1 = 0; nnlj1 <= nlj1; nnlj1++)
-        for (nnlj2 = 0; nnlj2 <= (nnlj1 == nlj1 ? nlj2 : nnlj1); nnlj2++) {
-            if (e_nlj[nnlj1] + e_nlj[nnlj2] > EMax)
+        for (nnlj2 = 0; nnlj2 <= (nlj1 == nnlj1 ? nlj2 : nnlj1); nnlj2++)
+        for (nnlj3 = 0; nnlj3 <= (nlj1 == nnlj1 && nlj2 == nnlj2 ?
+                                  nlj3 : nnlj2); nnlj3++) {
+            if (e_nlj[nnlj1] + e_nlj[nnlj2] + e_nlj[nnlj3] > EMax)
                 break;
-            if (violates_parity_2(nlj1, nlj2, nnlj1, nnlj2, l_nlj))
+            if (violates_parity_3(nlj1, nlj2, nlj3, nnlj1, nnlj2, nnlj3, l_nlj))
                 continue;
-            range_J_both(twoj_nlj[nlj1], twoj_nlj[nlj2],
-                         twoj_nlj[nnlj1], twoj_nlj[nnlj2],
-                         &JMin, &JMax);
-            for (J = JMin; J <= JMax; J++)
-            for (T = 0; T <= 1; T++)
-            for (MT = -T; MT <= T; MT++) {
-                (*f)(env, nlj1, nlj2, nnlj1, nnlj2, J, T, MT);
+            range_J(twoj_nlj[nlj1], twoj_nlj[nlj2], &J12Min, &J12Max);
+            range_J(twoj_nlj[nnlj1], twoj_nlj[nnlj2], &JJ12Min, &JJ12Max);
+            for (J12 = J12Min; J12 <= J12Max; J12++)
+            for (JJ12 = JJ12Min; JJ12 <= JJ12Max; JJ12++) {
+                range_twoJ_both(2 * J12, twoj_nlj[nlj3],
+                                2 * JJ12, twoj_nlj[nnlj3],
+                                &twoJMin, &twoJMax);
+                for (twoJ = twoJMin; twoJ <= twoJMax; twoJ += 2)
+                for (T12 = 0; T12 <= 1; T12++)
+                for (TT12 = 0; TT12 <= 1; TT12++)
+                for (twoT = 1; twoT <= 2 * min(T12, TT12) + 1; twoT += 2) {
+                    (*f)(env, nlj1, nlj2, nlj3, nnlj1, nnlj2, nnlj3,
+                         J12, JJ12, twoJ, T12, TT12, twoT);
+                }
             }
         }
     }
-}
-
-static void get_me2jDim_iteratee(void *env, int nlj1, int nlj2,
-                                 int nnlj1, int nnlj2, int J, int T, int MT)
-{
-    int *counter = (int *)env;
-    ++*counter;
-}
-
-int get_me2jDim(int nljDim, int EMax, const int *e_nlj,
-                const int *l_nlj, const int *twoj_nlj)
-{
-    int counter = 0;
-    iterate_me2j(nljDim, EMax, e_nlj, l_nlj, twoj_nlj,
-                 &get_me2jDim_iteratee, &counter);
-    return counter;
-}
-
-/** Read an .me2j matrix element text file into the given array. */
-int read_matrixElems(const char *filename, int me2jDim, double *matrixElems)
-{
-    char line[1024];
-    int i;
-
-    FILE *stream = fopen(filename, "r");
-    if (!stream) {
-        return 1;
-    }
-
-    /* skip one line */
-    if (!fgets(line, sizeof(line), stream) ||
-        strlen(line) == sizeof(line) - 1) {
-        goto invalid_format;
-    }
-
-    for (i = 0; i < me2jDim; i++) {
-        double num;
-        const int status = fscanf(stream, "%lf", &num);
-        if (status != 1) {
-            if (ferror(stream)) {
-                goto invalid_format;
-            }
-            break;
-        }
-        matrixElems[i] = num;
-    }
-
-    fclose(stream);
-
-    if (i < me2jDim) {
-        return 3;
-    }
-
-    return 0;
-
-invalid_format:
-    fclose(stream);
-    return 2;
-}
-
-struct me2j {
-    int me2jDim;
-    double *matrixElems;
-    struct nlj_table table;
-};
-
-void free_me2j(struct me2j *self)
-{
-    free_nlj_table(&self->table);
-    free(self->matrixElems);
-}
-
-/** Read an .me2j matrix element text file. */
-int read_me2j(struct me2j *self, const char *filename,
-              int eMax, int nMax, int lMax, int EMax)
-{
-    int e;
-
-    if (init_nlj_table(&self->table, eMax, nMax, lMax)) {
-        return -1;
-    }
-
-    self->me2jDim = get_me2jDim(self->table.nljDim, EMax, self->table.e_nlj,
-                                self->table.l_nlj, self->table.twoj_nlj);
-    self->matrixElems =
-        (double*)malloc(sizeof(*self->matrixElems) * (size_t)self->me2jDim);
-    if (!self->matrixElems) {
-        free_nlj_table(&self->table);
-        return -1;
-    }
-
-    e = read_matrixElems(filename, self->me2jDim, self->matrixElems);
-    if (e) {
-        free_nlj_table(&self->table);
-        free(self->matrixElems);
-        return e;
-    }
-
-    return 0;
 }
 
 /* ------------------------------------------------------------------------ */
 /* Example program */
 /* ------------------------------------------------------------------------ */
 
-static void main_nlj_iteratee(void *env, int e, int n, int l, int twoj)
-{
-    int e2, n2, l2, twoj2, *nlj = (int *)env;
-    printf("%i\t%i\t%i\t%i\t%.1f\n", *nlj, e, n, l, twoj / 2.);
-
-    /* make sure pack_nlj and unpack_nlj are inverses */
-    e2 = unpack_nlj(*nlj, &n2, &l2, &twoj2);
-    assert(pack_nlj(e2, twoj2) == *nlj);
-
-    ++*nlj;
-}
-
-static void main_me2j_iteratee(void *env,
-                               int nlj1, int nlj2,
-                               int nnlj1, int nnlj2,
-                               int J, int T, int MT)
+static void main_me3j_iteratee(void *env,
+                               int nlj1, int nlj2, int nlj3,
+                               int nnlj1, int nnlj2, int nnlj3,
+                               int J12, int JJ12, int J,
+                               int T12, int TT12, int T)
 {
     FILE *stream = (FILE *)env;
-    fprintf(stream, "%i\t%i\t%i\t%i\t%i\t%i\t%i\n",
-            nlj1, nlj2, nnlj1, nnlj2, J, T, MT);
+    fprintf(stream, "%i\t%i\t%i\t%i\t%i\t%i\t%i\t%i\t%i\t%i\t%i\t%i\n",
+            nlj1, nlj2, nlj3, nnlj1, nnlj2, nnlj3,
+            J12, JJ12, J, T12, TT12, T);
 }
 
 static void usage(const char *name, FILE *stream)
@@ -387,7 +272,7 @@ static int parse_args(int argc, char **argv,
         ++argv;
         --argc;
     }
-    *filename = "darmstadt_me2j_quantum_numbers.txt";
+    *filename = "darmstadt_me3j_quantum_numbers.txt";
     *nMax = *lMax = *EMax = INT_MAX;
     while ((e = get_options(&argc, &argv, &opt, &val, "Elno")) == -1) {
         switch (opt) {
@@ -424,7 +309,7 @@ int main(int argc, char **argv)
 {
     struct nlj_table table;
     const char *name, *filename;
-    int nlj, eMax, nMax, lMax, EMax;
+    int eMax, nMax, lMax, EMax;
     FILE *stream;
 
     if (parse_args(argc, argv, &name, &filename, &eMax, &nMax, &lMax, &EMax)) {
@@ -444,13 +329,7 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    /* print the single-particle states */
-    printf("nlj\te\tn\tl\tj\n");
-    nlj = 0;
-    iterate_nlj(eMax, nMax, lMax, &main_nlj_iteratee, &nlj);
-    printf("Total of %i single-particle state(s).\n\n", table.nljDim);
-
-    printf("Quantum numbers of 2-body matrix elements will be written to:\n"
+    printf("Quantum numbers of 3-body matrix elements will be written to:\n"
            "  %s\nWriting... ", filename);
     fflush(stdout);
 
@@ -462,9 +341,11 @@ int main(int argc, char **argv)
     }
 
     /* write the quantum numbers out to file */
-    fprintf(stream, "nlj1\tnlj2\tnnlj1\tnnlj2\tJ\tT\tMT\n");
-    iterate_me2j(table.nljDim, EMax, table.e_nlj, table.l_nlj, table.twoj_nlj,
-                 &main_me2j_iteratee, stream);
+    fprintf(stream,
+            "nlj1\tnlj2\tnlj3\tnnlj1\tnnlj2\tnnlj3\t"
+            "J12\tJJ12\ttwoJ\tT12\tTT12\ttwoT\n");
+    iterate_me3j(table.nljDim, EMax, table.e_nlj, table.l_nlj, table.twoj_nlj,
+                 &main_me3j_iteratee, stream);
 
     printf("done.\n");
     fclose(stream);
