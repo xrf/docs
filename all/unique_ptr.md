@@ -1,47 +1,47 @@
 # `unique_ptr`
+C++11 introduced the [`unique_ptr`][1] template in the `<memory>` header.  It
+provides a convenient way of managing memory (and more generally, lifetimes of
+arbitrary objects).  It's a bit odd to use, so this article provides a very
+basic introduction to its semantics.
 
-
-The `unique_ptr` template was introduced in C++11 and provides a very
-convenient way of managing memory (and more generally, lifetimes of arbitrary
-objects).  It's a bit odd to use, so this document provides a very basic
-introduction to its semantics.
-
-The document will not attempt explain its features in detail.  You can find
-[more info about `unique_ptr` in the API documentation][1].
-
+The article will not attempt explain its features in detail.  You can find
+[more info in the API documentation][1].
 
 (The astute reader will notice that I'm using the same ownership terminology
 as [Rust][2].)
 
 ## Scalar vs array
 
-There are two kinds of `unique_ptr`:
+There are two kinds of `unique_ptr`, one for scalars (i.e. non-arrays) and one
+for arrays:
 
-  - `std::make_unique<double>` can hold a scalar (one element);
-  - `std::make_unique<double[]>` can hold an array with an unknown number of
-    elements.
+  - `unique_ptr<double>` can hold a scalar of type `double`;
+  - `unique_ptr<double[]>` can hold an array of `double` values with an
+    unknown number of elements.
 
-This document shall only discuss the latter.
+Of course, one may substitute `double` with any arbitrary type.
 
 ## Construction
 
-A `unique_ptr` variable is typically constructed using [`make_unique`][3].
-However, `make_unique` requires C++14 so if you want to stick to C++11 you can
-replace
+A `std::unique_ptr` variable can constructed using [`make_unique`][3]:
 
-```c++
-std::make_unique<double[]>(n)
-```
+~~~c++
+auto p1 = std::make_unique<double>(3.14);
+auto p2 = std::make_unique<double[]>(n);
+~~~
 
-with
+  - The first line creates a `unique_ptr` to a `double` value `3.14` and saves
+    it in the `p1` variable.
+  - The second line creates a `unique_ptr` to a `double` array of `n` elements
+    and saves it to in the `p2` variable.
 
-```c++
-std::unique_ptr<double[]>(new double[n]())
-```
+Note that `make_unique` requires C++14.  If you want to stick to plain C++11
+you can substitute those with:
 
-instead.  The parameter `n` is used to specify the number of elements.  (Note
-that `make_unique` for arrays works very differently from `make_unique` for
-scalars.)
+~~~c++
+std::unique_ptr<double>   p1(new double(3.14));
+std::unique_ptr<double[]> p2(new double[n]());
+~~~
 
 ## Ownership and uniqueness
 
@@ -53,7 +53,7 @@ all pointers and references to it.
 There can only be one owner at any one time: one does not simply **copy** a
 `unique_ptr`.  For example:
 
-```c++
+~~~c++
 // compile with: c++ -std=c++14
 #include <memory>
 
@@ -69,10 +69,8 @@ void uniqueness1()
 
     // compile error! (attempted to copy p to the argument of taker)
     taker(p);
-
-    // p dies, so the array is deleted automatically
 }
-```
+~~~
 
 Typical errors when this happens:
 
@@ -87,7 +85,7 @@ Typical errors when this happens:
 If an owner wants to **lend** the contents of `unique_ptr` to another function
 without relinquishing its ownership, it can give a pointer/reference to it:
 
-```c++
+~~~c++
 // compile with: c++ -std=c++14
 #include <memory>
 
@@ -110,12 +108,12 @@ void uniqueness2()
 
     // p dies, so the array is deleted automatically
 }
-```
+~~~
 
 If an owner wants to yield its ownership of a `unique_ptr` to another function
-or variable, it can perform a **`move`**:
+or variable, it can perform a [**`move`**][6]:
 
-```c++
+~~~c++
 // compile with: c++ -std=c++14
 #include <memory>
 #include <utility> // required for std::move
@@ -135,33 +133,47 @@ void uniqueness3()
 
     // p and q both die, but they no longer own anything so nothing happens here
 }
-```
+~~~
 
 ## Resetting
 
 Although normally a `unique_ptr` will automatically delete its object once it
 dies (or when it gains ownership of something else), one can hasten the
-process by manually calling `.reset()`:
+process by manually calling [`.reset()`][4]:
 
-```c++
+~~~c++
 p.reset();
-```
+~~~
 
 This will immediately delete the object pointed to by `p` and cause the `p` to
 become **empty**.
 
 ## Emptiness
 
-A `unique_ptr` can be empty, in which case it owns nothing.  This is the
-default state if is not explicitly initialized with something.  It is also the
-state after it loses its ownership of something, or forcifully emptied via
-`.reset()`.
+A `unique_ptr` can be empty, in which case it owns nothing – the analog of a
+`nullptr`.  This is the default state if is not explicitly initialized with
+something.  It is also the state after it loses its ownership of something, or
+is forcifully emptied via `.reset()`.
+
+## Releasing
+
+Normally, a `unique_ptr` automatically loses its ownership when it is *moved*
+to another `unique_ptr`.  Alternatively, one can force it give up its
+ownership in the form of a raw pointer via [`.release()`][5]:
+
+~~~c++
+double* raw_ptr = p.release();
+~~~
+
+After releasing, the pointer will not be freed automatically by the
+`unique_ptr` as it is now empty.  The programmer is then responsible for
+deleting the pointer manually.
 
 ## Example
 
 Here's a more complete example demonstrating the use of `unique_ptr`:
 
-```c++
+~~~c++
 // compile with: c++ -std=c++14 -lopenblas
 #include <cmath>
 #include <cstdlib>
@@ -269,8 +281,11 @@ int main()
     // v1 and sum are deleted automatically;
     // yay no memory leaks \o/
 }
-```
+~~~
 
 [1]: http://en.cppreference.com/w/cpp/memory/unique_ptr
 [2]: https://www.rust-lang.org
 [3]: http://en.cppreference.com/w/cpp/memory/unique_ptr/make_unique
+[4]: http://en.cppreference.com/w/cpp/memory/unique_ptr/reset
+[5]: http://en.cppreference.com/w/cpp/memory/unique_ptr/release
+[6]: http://en.cppreference.com/w/cpp/utility/move
